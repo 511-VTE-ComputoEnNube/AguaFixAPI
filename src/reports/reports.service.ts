@@ -1,26 +1,46 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Report } from './entities/report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
-import { UpdateReportDto } from './dto/update-report.dto';
+import { EmailService } from '../email/email.service';
+import { generateReportTemplate } from './templates/report.template';
+import { envs } from '../config/envs';
 
 @Injectable()
 export class ReportsService {
-  create(createReportDto: CreateReportDto) {
-    return 'This action adds a new report';
+  constructor(
+    @InjectRepository(Report)
+    private readonly reportRepository: Repository<Report>,
+    private readonly emailService: EmailService,
+  ) {}
+
+  async create(dto: CreateReportDto): Promise<Report> {
+    const report = this.reportRepository.create({
+      address: dto.address,
+      description: dto.description,
+      severity: dto.severity,
+      reporterPhone: dto.reporterPhone,
+      status: 'PENDING',
+    });
+
+    const savedReport = await this.reportRepository.save(report);
+
+    const htmlContent = generateReportTemplate(dto);
+    await this.emailService.sendEmail(
+      envs.MAILER_USER,
+      `Nuevo Reporte de Fuga #${savedReport.id} - Severidad: ${savedReport.severity.toUpperCase()}`,
+      htmlContent,
+    );
+
+    return savedReport;
   }
 
-  findAll() {
-    return `This action returns all reports`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} report`;
-  }
-
-  update(id: number, updateReportDto: UpdateReportDto) {
-    return `This action updates a #${id} report`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} report`;
+  async findAll(): Promise<Report[]> {
+    return await this.reportRepository.find({
+      order: {
+        createdAt: 'DESC',
+      },
+    });
   }
 }
